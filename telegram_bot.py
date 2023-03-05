@@ -1,5 +1,6 @@
 from aiogram import Bot, Dispatcher, executor, types
 from text_recognition import text_recognition
+from openai_api import api_request
 
 import config
 
@@ -28,8 +29,18 @@ async def photo_handler(msg: types.Message):
     photo_path = "photos/%s.jpg" % (file_id)
     await photo.download(destination_file=photo_path)
     recognized_text = text_recognition(photo_path)
-    await msg.answer(recognized_text)
+    api_response = api_request(recognized_text)
+    await msg.answer(api_response)
+
+@dp.message_handler(content_types="text")
+#Sent API request with text from user to OpenAI
+async def text_handler(msg: types.Message):
+    api_response = api_request(msg.text)
+    await msg.answer("Please wait\n"
+                     "Your request is being processed...")
+    await msg.answer(api_response)
 
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
+
