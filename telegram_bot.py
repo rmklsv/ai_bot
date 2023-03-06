@@ -1,12 +1,19 @@
 from aiogram import Bot, Dispatcher, executor, types
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
+from aiogram.dispatcher.filters import Text
+from aiogram.dispatcher import FSMContext
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
+import pyperclip
+
 from text_recognition import text_recognition
 from openai_api import api_request
 
 import config
 
 
+storage = MemoryStorage()
 bot = Bot(token=config.TOKEN)
-dp = Dispatcher(bot)
+dp = Dispatcher(bot, storage=storage)
 
 
 @dp.message_handler(commands=["start"])
@@ -29,8 +36,38 @@ async def photo_handler(msg: types.Message):
     photo_path = "photos/%s.jpg" % (file_id)
     await photo.download(destination_file=photo_path)
     recognized_text = text_recognition(photo_path)
-    api_response = api_request(recognized_text)
-    await msg.answer(api_response)
+    await msg.answer("Please wait\n"
+                     "Recognizing the text...")
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="Yes, send", callback_data="Yes")
+        ],
+        [
+            InlineKeyboardButton(text="No, edit", callback_data="No")
+        ]
+    ])
+    await bot.send_message(chat_id=msg.chat.id,
+                           text="This is your text?\n"
+                           + recognized_text,
+                           reply_markup=keyboard)
+    
+
+@dp.callback_query_handler(lambda c: True)
+async def process_callback_button(callback_query: CallbackQuery):
+    # Check which button was pressed by looking at the callback_data
+    if callback_query.data == "Yes":
+        api_response = api_request(callback_query.message.text)
+        #await bot.send_message(chat_id=callback_query.message.chat.id, text="Please wait\nYour request is being processed...")
+        await bot.send_message(chat_id=callback_query.message.chat.id,
+                               text=api_response)
+    elif callback_query.data == "No":
+        # Copy the recognized text to user buffer
+        await bot.send_message(chat_id=callback_query.message.chat.id, text="Please, copy and edit this text, and then send it to me:")
+        await bot.send_message(chat_id=callback_query.message.chat.id,
+                               text=callback_query.message.text[18:])
+    # Answer the callback query to remove the "pending" status of the button press
+    await bot.answer_callback_query(callback_query.id)
+
 
 @dp.message_handler(content_types="text")
 #Sent API request with text from user to OpenAI
