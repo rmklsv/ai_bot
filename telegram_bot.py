@@ -1,12 +1,12 @@
+import os
 from aiogram import Bot, Dispatcher, executor, types
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, Voice
 from aiogram.dispatcher.filters import Text
 from aiogram.dispatcher import FSMContext
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
-import pyperclip
 
 from text_recognition import text_recognition
-from openai_api import api_request
+from openai_api import api_request, speech_to_text
 
 import config
 
@@ -34,10 +34,10 @@ async def photo_handler(msg: types.Message):
     file_id = msg.photo[-1].file_id
     photo = await bot.get_file(file_id)
     photo_path = "photos/%s.jpg" % (file_id)
-    await photo.download(destination_file=photo_path)
-    recognized_text = text_recognition(photo_path)
     await msg.answer("Please wait\n"
                      "Recognizing the text...")
+    await photo.download(destination_file=photo_path)
+    recognized_text = text_recognition(photo_path)
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="Yes, send", callback_data="Yes")
@@ -73,11 +73,20 @@ async def process_callback_button(callback_query: CallbackQuery):
 #Sent API request with text from user to OpenAI
 async def text_handler(msg: types.Message):
     api_response = api_request(msg.text)
-    await msg.answer("Please wait\n"
-                     "Your request is being processed...")
     await msg.answer(api_response)
+
+@dp.message_handler(content_types="voice")
+async def handle_voice_message(msg: types.Message):
+    # Get the voice message from the message object
+    voice_message: Voice = msg.voice
+    audio_id = voice_message.file_id
+    audio = await bot.get_file(audio_id)
+    audio_path = "audio/%s.webm" % (audio_id)
+    await audio.download(destination_file=audio_path)
+    api_response = speech_to_text(audio_path)
+    await msg.answer(api_response)
+
 
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
-
